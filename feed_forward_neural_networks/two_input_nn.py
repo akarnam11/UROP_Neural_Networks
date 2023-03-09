@@ -27,19 +27,20 @@ df['RainTodayFlag']=df['RainToday'].apply(lambda x: 1 if x=='Yes' else 0)
 df['RainTomorrowFlag']=df['RainTomorrow'].apply(lambda x: 1 if x=='Yes' else 0)
 
 ##### Step 1 - Select data for modeling
-X=df[['Humidity3pm']]
+X=df[['WindGustSpeed', 'Humidity3pm']]
 y=df['RainTomorrowFlag'].values
 
 ##### Step 2 - Create training and testing samples
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
 
-##### Step 3 - Specify the structure of a Neural Network
-model = Sequential(name="Model-with-One-Input") # Model
-model.add(Input(shape=(1,), name='Input-Layer')) # Input Layer - need to specify of inputs
-model.add(Dense(2, activation='softplus', name='Hidden-Layer')) # Hidden Layer - softplus(x) = log(exp(x) + 1)
-model.add(Dense(1, activation='sigmoid', name='Output-Layer')) # Output Layer - sigmoid(x) = 1 / (1 + exp(-x))
 
-##### Step 4 - Compile keras model
+##### Step 3 - Specify the structure of a neural network
+model = Sequential(name="Model-with-Two-Inputs") # Model
+model.add(Input(shape=(2,), name='Input-Layer')) # Input Layer - need to speicfy the shape of inputs
+model.add(Dense(2, activation='softplus', name='Hidden-Layer')) # Hidden Layer, softplus(x) = log(exp(x) + 1)
+model.add(Dense(1, activation='sigmoid', name='Output-Layer')) # Output Layer, sigmoid(x) = 1 / (1 + exp(-x))
+
+##### Step 4 - Compile the keras model
 model.compile(optimizer='adam', # default='rmsprop', an algorithm to be used in backpropagation
               loss='binary_crossentropy', # Loss function to be optimized. A string (name of loss function), or a tf.keras.losses.Loss instance.
               metrics=['Accuracy', 'Precision', 'Recall'], # List of metrics to be evaluated by the model during training and testing. Each of this can be a string (name of a built-in function), function or a tf.keras.metrics.Metric instance. 
@@ -49,7 +50,7 @@ model.compile(optimizer='adam', # default='rmsprop', an algorithm to be used in 
               steps_per_execution=None # Defaults to 1. The number of batches to run during each tf.function call. Running multiple batches inside a single tf.function call can greatly improve performance on TPUs or small models with a large Python overhead.
              )
 
-##### Step 5 - Fit keras model on the dataset 
+##### Step 5 - Fit keras model on the dataset
 model.fit(X_train, # input data
           y_train, # target data
           batch_size=10, # Number of samples per gradient update. If unspecified, batch_size will default to 32.
@@ -71,11 +72,13 @@ model.fit(X_train, # input data
           use_multiprocessing=False, # default=False, Used for generator or keras.utils.Sequence input only. If True, use process-based threading. If unspecified, use_multiprocessing will default to False. 
          )
 
-##### Step 6 - Use model to make predicitions
+
+##### Step 6 - Use model to make predictions
 # Predict class labels on training data
-pred_labels_tr = (model.predict(X_train) > 0.5).astype(int)
-# Predict class labels on testing data
+pred_labels_train = (model.predict(X_train) > 0.5).astype(int)
+# Predict class labels on a test data
 pred_labels_test = (model.predict(X_test) > 0.5).astype(int)
+
 
 ##### Step 7 - Model Performance Summary
 print("")
@@ -85,38 +88,66 @@ print("")
 print('-------------------- Weights and Biases --------------------')
 for layer in model.layers:
     print("Layer: ", layer.name) # print layer name
-    print("  --Kernels (Weights): ", layer.get_weights()[0]) # weights
+    print("  --Kernels (Weights): ", layer.get_weights()[0]) # kernels (weights)
     print("  --Biases: ", layer.get_weights()[1]) # biases
     
 print("")
 print('---------- Evaluation on Training Data ----------')
-print(classification_report(y_train, pred_labels_tr))
+print(classification_report(y_train, pred_labels_train))
 print("")
 
 print('---------- Evaluation on Test Data ----------')
 print(classification_report(y_test, pred_labels_test))
 print("")
 
-##### Now, let's plot the prediction curve on a chart 
+##### Now, we'll visualize the predictions using a 3D chart
+def Plot_3D(X, X_test, y_test, clf, x1, x2, mesh_size, margin):
+    # Create a mesh grid on which we will run our model
+    x_min, x_max = X.iloc[:, 0].min() - margin, X.iloc[:, 0].max() + margin
+    y_min, y_max = X.iloc[:, 1].min() - margin, X.iloc[:, 1].max() + margin
+    xrange = np.arange(x_min, x_max, mesh_size)
+    yrange = np.arange(y_min, y_max, mesh_size)
+    xx, yy = np.meshgrid(xrange, yrange)
 
-# Create 100 evenly spaced points from smallest X to largest X
-X_range = np.linspace(X.min(), X.max(), 100)
-# Predict probabilities for rain tomorrow
-y_predicted = model.predict(X_range.reshape(-1, 1))
+    # Calculate Neural Network predictions on the grid
+    Z = model.predict(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z.reshape(xx.shape)
 
-# Create a scatter plot
-figure = px.scatter(x=X_range.ravel(), y=y_predicted.ravel(), 
-                 opacity=0.8, color_discrete_sequence=['black'],
-                 labels=dict(x="Value of Humidity3pm", y="Predicted Probability of Rain Tomorrow",))
-figure.update_layout(dict(plot_bgcolor = 'white')) # Change chart background color
-# Update axes lines
-figure.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey', 
-                 zeroline=True, zerolinewidth=1, zerolinecolor='lightgrey', 
-                 showline=True, linewidth=1, linecolor='black')
-figure.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgrey', 
-                 zeroline=True, zerolinewidth=1, zerolinecolor='lightgrey', 
-                 showline=True, linewidth=1, linecolor='black')
-figure.update_layout(title=dict(text="Feed Forward Neural Network (1 Input) Model Results", 
-                             font=dict(color='black'))) # Set figure title
-figure.update_traces(marker=dict(size=7)) # Update marker size
-figure.show()
+    # Create a 3D scatter plot
+    fig = px.scatter_3d(x=X_test[x1], y=X_test[x2], z=y_test,
+                     opacity=0.8, color_discrete_sequence=['black'], height=900, width=1000)
+
+    # Set figure title and colors
+    fig.update_layout(#title_text="Scatter 3D Plot with FF Neural Network Prediction Surface",
+                      paper_bgcolor = 'white',
+                      scene_camera=dict(up=dict(x=0, y=0, z=1), 
+                                        center=dict(x=0, y=0, z=-0.1),
+                                        eye=dict(x=0.75, y=-1.75, z=1)),
+                                        margin=dict(l=0, r=0, b=0, t=0),
+                      scene = dict(xaxis=dict(title=x1,
+                                              backgroundcolor='white',
+                                              color='black',
+                                              gridcolor='#f0f0f0'),
+                                   yaxis=dict(title=x2,
+                                              backgroundcolor='white',
+                                              color='black',
+                                              gridcolor='#f0f0f0'
+                                              ),
+                                   zaxis=dict(title='Probability of Rain Tomorrow',
+                                              backgroundcolor='lightgrey',
+                                              color='black', 
+                                              gridcolor='#f0f0f0', 
+                                              )))
+    
+    fig.update_traces(marker=dict(size=1)) # Update marker size
+
+    # Add prediction plane
+    fig.add_traces(go.Surface(x=xrange, y=yrange, z=Z, name='FF NN Prediction Plane',
+                              colorscale='Bluered',
+                              reversescale=True,
+                              showscale=False, 
+                              contours = {"z": {"show": True, "start": 0.5, "end": 0.9, "size": 0.5}}))
+    fig.show()
+    return fig
+
+fig = Plot_3D(X, X_test, y_test, model, x1='WindGustSpeed', x2='Humidity3pm', mesh_size=1, margin=0)
